@@ -44,34 +44,34 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := DAQ
+BUILD_ARTIFACT_NAME := Data_Acquisition
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-DAQ.elf \
+Data_Acquisition.elf \
 
 MAP_FILES += \
-DAQ.map \
+Data_Acquisition.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-DAQ.list \
+Data_Acquisition.list \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: DAQ.elf secondary-outputs
+main-build: Data_Acquisition.elf secondary-outputs
 
 # Tool invocations
-DAQ.elf DAQ.map: $(OBJS) $(USER_OBJS) D:\04_GitHub\Data_Acquisition\DAQ\STM32F746ZGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "DAQ.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"D:\04_GitHub\Data_Acquisition\DAQ\STM32F746ZGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="DAQ.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+Data_Acquisition.elf Data_Acquisition.map: $(OBJS) $(USER_OBJS) /home/ali/Github/Data_Acquisition/STM32F746ZGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "Data_Acquisition.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"/home/ali/Github/Data_Acquisition/STM32F746ZGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Data_Acquisition.map" -Wl,--gc-sections -static  -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -80,14 +80,14 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-DAQ.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "DAQ.list"
+Data_Acquisition.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "Data_Acquisition.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) DAQ.elf DAQ.list DAQ.map default.size.stdout
+	-$(RM) Data_Acquisition.elf Data_Acquisition.list Data_Acquisition.map default.size.stdout
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)

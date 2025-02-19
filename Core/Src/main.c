@@ -22,9 +22,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "math.h"
 #include "udp.h"
 #include "ip_addr.h"
+#include <stdio.h>
+#include <stdint.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,7 +49,7 @@ TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
 extern int32_t Encodder1_index, Encodder2_index, Encodder2_index;
-uint32_t us_period_overflow = 0;
+uint32_t overflow = 0;
 struct udp_pcb *NTP_UDP;
 union NtpClientPacket{
 	uint64_t t1;
@@ -76,22 +77,34 @@ static void MX_TIM2_Init(void);
 /* USER CODE BEGIN 0 */
 void NTP_server(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
 {
+//	printf("Request Received!\n");
 	union NtpClientPacket client_packet;
 	union NtpClientResponsePacket client_response;
 	struct pbuf *response_buf;
 	if(p->len == 8)
 	{
-		uint64_t t2 = ((uint64_t)(us_period_overflow - 1) << 32) | (uint64_t)htim2.Instance->CNT;
+//		printf("OV: %lu\n",overflow-1);
+//		printf("Timer: %llu\n", 10*(uint64_t)htim2.Instance->CNT);
+//		printf("Stamp: %llu\n", 10*(((uint64_t)(overflow - 1) << 32) | (uint64_t)htim2.Instance->CNT));
 		pbuf_copy_partial(p, client_packet.buffer, p->len, 0);
+//		printf("Client: %llu\n", client_packet.t1);
 		client_response.data.t1 = client_packet.t1;
-		client_response.data.t2 = t2;
+		client_response.data.t2 = 10*(((uint64_t)(overflow - 1) << 32) | ((uint64_t)htim2.Instance->CNT));
 		response_buf = pbuf_alloc(PBUF_TRANSPORT, 24, PBUF_RAM);
-		client_response.data.t3 = ((uint64_t)(us_period_overflow - 1) << 32) | (uint64_t)htim2.Instance->CNT;
+		client_response.data.t3 = 10*(((uint64_t)(overflow - 1) << 32) | ((uint64_t)htim2.Instance->CNT));
 		pbuf_take(response_buf, client_response.buffer, 24);
 		udp_sendto(pcb, response_buf, addr, port);
 		pbuf_free(response_buf);
 	}
 	pbuf_free(p);
+}
+
+int _write(int file, char *ptr, int len)
+{
+	int i = 0;
+	for (i=0; i<len; i++)
+		ITM_SendChar((*ptr++));
+	return len;
 }
 /* USER CODE END 0 */
 
@@ -127,6 +140,7 @@ int main(void)
   MX_LWIP_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_Base_Start_IT(&htim2);
   NTP_UDP = udp_new();
   udp_bind(NTP_UDP, IP_ADDR_ANY, 10000);
   udp_recv(NTP_UDP, NTP_server, NULL);
@@ -136,6 +150,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  MX_LWIP_Process();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -218,11 +233,11 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 10;
+  htim2.Init.Prescaler = 0;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim2.Init.Period = 4294967295;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
@@ -260,11 +275,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
@@ -275,20 +289,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USER_Btn_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD1_Pin LD3_Pin LD2_Pin */
-  GPIO_InitStruct.Pin = LD1_Pin|LD3_Pin|LD2_Pin;
+  /*Configure GPIO pins : LD3_Pin LD2_Pin */
+  GPIO_InitStruct.Pin = LD3_Pin|LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : STLK_RX_Pin STLK_TX_Pin */
-  GPIO_InitStruct.Pin = STLK_RX_Pin|STLK_TX_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /*Configure GPIO pin : USB_PowerSwitchOn_Pin */
   GPIO_InitStruct.Pin = USB_PowerSwitchOn_Pin;
@@ -303,26 +309,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : USB_SOF_Pin USB_ID_Pin USB_DM_Pin USB_DP_Pin */
-  GPIO_InitStruct.Pin = USB_SOF_Pin|USB_ID_Pin|USB_DM_Pin|USB_DP_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF10_OTG_FS;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : USB_VBUS_Pin */
-  GPIO_InitStruct.Pin = USB_VBUS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(USB_VBUS_GPIO_Port, &GPIO_InitStruct);
-
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if(htim->Instance == htim2.Instance)
+	{
+		overflow++;
+	}
+}
 /* USER CODE END 4 */
 
 /**
