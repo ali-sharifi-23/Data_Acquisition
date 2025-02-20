@@ -65,7 +65,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/ip6.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/ip.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/udp.h \
- ../Middlewares/Third_Party/LwIP/src/include/lwip/ip_addr.h
+ ../Core/Inc/time_keeper.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal.h:
 ../Core/Inc/stm32f7xx_hal_conf.h:
@@ -133,4 +133,4 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Middlewares/Third_Party/LwIP/src/include/lwip/ip6.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/ip.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/udp.h:
-../Middlewares/Third_Party/LwIP/src/include/lwip/ip_addr.h:
+../Core/Inc/time_keeper.h:

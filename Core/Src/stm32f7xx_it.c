@@ -22,6 +22,7 @@
 #include "stm32f7xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "time_keeper.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,9 +56,14 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim2;
+extern TIM_HandleTypeDef htim3;
+extern TIM_HandleTypeDef htim4;
 /* USER CODE BEGIN EV */
-
+volatile int32_t encoder1_index = 0;
+volatile int32_t encoder2_index = 0;
+volatile int32_t encoder3_index = 0;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -199,12 +205,29 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles TIM1 update interrupt and TIM10 global interrupt.
+  */
+void TIM1_UP_TIM10_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 0 */
+	if (htim3.Instance->CNT < 500)
+		encoder1_index++;
+	else
+		encoder1_index--;
+  /* USER CODE END TIM1_UP_TIM10_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim1);
+  /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 1 */
+
+  /* USER CODE END TIM1_UP_TIM10_IRQn 1 */
+}
+
+/**
   * @brief This function handles TIM2 global interrupt.
   */
 void TIM2_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM2_IRQn 0 */
-
+	time_keeper_interrupt_routine();
   /* USER CODE END TIM2_IRQn 0 */
   HAL_TIM_IRQHandler(&htim2);
   /* USER CODE BEGIN TIM2_IRQn 1 */
@@ -212,6 +235,46 @@ void TIM2_IRQHandler(void)
   /* USER CODE END TIM2_IRQn 1 */
 }
 
-/* USER CODE BEGIN 1 */
+/**
+  * @brief This function handles TIM3 global interrupt.
+  */
+void TIM3_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM3_IRQn 0 */
+	if (htim3.Instance->CNT < 500)
+		encoder2_index++;
+	else
+		encoder2_index--;
+  /* USER CODE END TIM3_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim3);
+  /* USER CODE BEGIN TIM3_IRQn 1 */
 
+  /* USER CODE END TIM3_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM4 global interrupt.
+  */
+void TIM4_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM4_IRQn 0 */
+	if (htim3.Instance->CNT < 500)
+		encoder3_index++;
+	else
+		encoder3_index--;
+  /* USER CODE END TIM4_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim4);
+  /* USER CODE BEGIN TIM4_IRQn 1 */
+
+  /* USER CODE END TIM4_IRQn 1 */
+}
+
+/* USER CODE BEGIN 1 */
+void encoder_read (int32_t *mot_encoder, uint64_t *ENC_TimeStamp)
+{
+	mot_encoder[0] = encoder1_index*1000 + htim1.Instance->CNT;
+	mot_encoder[1] = encoder2_index*1000 + htim3.Instance->CNT;
+	mot_encoder[2] = encoder3_index*1000 + htim4.Instance->CNT;
+	ENC_TimeStamp = Tick();
+}
 /* USER CODE END 1 */

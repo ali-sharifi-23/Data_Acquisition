@@ -23,9 +23,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "udp.h"
-#include "ip_addr.h"
-#include <stdio.h>
-#include <stdint.h>
+#include "stdio.h"
+#include "stdint.h"
+#include "time_keeper.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,12 +45,19 @@
 
 /* Private variables ---------------------------------------------------------*/
 
+TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim5;
 
 /* USER CODE BEGIN PV */
-extern int32_t Encodder1_index, Encodder2_index, Encodder2_index;
-uint32_t overflow = 0;
-struct udp_pcb *NTP_UDP;
+ip_addr_t Remote_IP;
+uint64_t UDP_TimeStamp;
+
+struct udp_pcb *UDP, *NTP_UDP;
+struct pbuf *Transmit_Pbuf;
+
 union NtpClientPacket{
 	uint64_t t1;
 	uint8_t buffer[8];
@@ -63,35 +70,54 @@ union NtpClientResponsePacket{
 	}data;
 	uint8_t buffer[24];
 };
+
+struct UdpDataType
+{
+	int32_t mot_encoders[3];
+	uint64_t ENC_TimeStamp;
+	uint64_t IR_TimeStamp;
+};
+union UDP_packet{
+	struct UdpDataType Data;
+	uint8_t buff[sizeof(struct UdpDataType)];
+}outPacket;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
+static void MX_TIM1_Init(void);
+static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
-
+void encoder_read (int32_t *mot_encoder, uint64_t *ENC_TimeStamp);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void sendUdpPacket(void)
+{
+	Transmit_Pbuf = pbuf_alloc(PBUF_TRANSPORT, sizeof(outPacket.buff), PBUF_RAM);
+	pbuf_take(Transmit_Pbuf, outPacket.buff, sizeof(outPacket.buff));
+	UDP_TimeStamp = Tick();
+	udp_sendto(UDP, Transmit_Pbuf, &Remote_IP, 5500);
+	pbuf_free(Transmit_Pbuf);
+}
+
 void NTP_server(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port)
 {
-//	printf("Request Received!\n");
 	union NtpClientPacket client_packet;
 	union NtpClientResponsePacket client_response;
 	struct pbuf *response_buf;
 	if(p->len == 8)
 	{
-//		printf("OV: %lu\n",overflow-1);
-//		printf("Timer: %llu\n", 10*(uint64_t)htim2.Instance->CNT);
-//		printf("Stamp: %llu\n", 10*(((uint64_t)(overflow - 1) << 32) | (uint64_t)htim2.Instance->CNT));
 		pbuf_copy_partial(p, client_packet.buffer, p->len, 0);
-//		printf("Client: %llu\n", client_packet.t1);
 		client_response.data.t1 = client_packet.t1;
-		client_response.data.t2 = 10*(((uint64_t)(overflow - 1) << 32) | ((uint64_t)htim2.Instance->CNT));
+		client_response.data.t2 = Tick();
 		response_buf = pbuf_alloc(PBUF_TRANSPORT, 24, PBUF_RAM);
-		client_response.data.t3 = 10*(((uint64_t)(overflow - 1) << 32) | ((uint64_t)htim2.Instance->CNT));
+		client_response.data.t3 = Tick();
 		pbuf_take(response_buf, client_response.buffer, 24);
 		udp_sendto(pcb, response_buf, addr, port);
 		pbuf_free(response_buf);
@@ -139,17 +165,44 @@ int main(void)
   MX_GPIO_Init();
   MX_LWIP_Init();
   MX_TIM2_Init();
+  MX_TIM3_Init();
+  MX_TIM4_Init();
+  MX_TIM1_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_Encoder_Start_IT(&htim1, TIM_CHANNEL_ALL);
+  HAL_TIM_Encoder_Start_IT(&htim3, TIM_CHANNEL_ALL);
+  HAL_TIM_Encoder_Start_IT(&htim4, TIM_CHANNEL_ALL);
+  TIM5->CCR1 = 1200;    // The duty cycle has been set to 30%
+  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
+
+  timeManagerInit(&htim2);
   NTP_UDP = udp_new();
   udp_bind(NTP_UDP, IP_ADDR_ANY, 10000);
   udp_recv(NTP_UDP, NTP_server, NULL);
+
+  IP_ADDR4(&Remote_IP, 192, 168, 1, 2);    // The IP Address for the ROS-based system
+  UDP = udp_new();
+  uint32_t UDP_Interval = 1000000;         // Send UDP packets every 1ms
+  uint32_t UDP_counter = 0;
+  uint8_t IRTracker_period = 40;           // The camera fps is set to 1/40ms = 25
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if (Tick() - UDP_TimeStamp >= UDP_Interval)
+	  {
+		  if (UDP_counter % IRTracker_period == 0)
+		  {
+			  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
+			  outPacket.Data.IR_TimeStamp = Tick();
+		  }
+		  encoder_read(outPacket.Data.mot_encoders, &outPacket.Data.ENC_TimeStamp);
+		  sendUdpPacket();
+		  UDP_counter++;
+	  }
 	  MX_LWIP_Process();
     /* USER CODE END WHILE */
 
@@ -215,6 +268,57 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 1000;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+
+}
+
+/**
   * @brief TIM2 Initialization Function
   * @param None
   * @retval None
@@ -260,6 +364,167 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 1000;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim3, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 0;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 1000;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 0;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 0;
+  if (HAL_TIM_Encoder_Init(&htim4, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+
+  /* USER CODE END TIM5_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 1999;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 3999;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_OnePulse_Init(&htim5, TIM_OPMODE_SINGLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM5_Init 2 */
+
+  /* USER CODE END TIM5_Init 2 */
+  HAL_TIM_MspPostInit(&htim5);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -274,7 +539,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
@@ -314,13 +581,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-	if(htim->Instance == htim2.Instance)
-	{
-		overflow++;
-	}
-}
+
 /* USER CODE END 4 */
 
 /**
