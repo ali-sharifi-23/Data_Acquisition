@@ -275,6 +275,6 @@ void encoder_read (int32_t *mot_encoder, uint64_t *ENC_TimeStamp)
 	mot_encoder[0] = encoder1_index*1000 + htim1.Instance->CNT;
 	mot_encoder[1] = encoder2_index*1000 + htim3.Instance->CNT;
 	mot_encoder[2] = encoder3_index*1000 + htim4.Instance->CNT;
-	ENC_TimeStamp = Tick();
+	*ENC_TimeStamp = Tick();
 }
 /* USER CODE END 1 */

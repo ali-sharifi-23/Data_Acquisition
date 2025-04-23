@@ -49,7 +49,6 @@ TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
-TIM_HandleTypeDef htim5;
 
 /* USER CODE BEGIN PV */
 ip_addr_t Remote_IP;
@@ -90,7 +89,6 @@ static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM1_Init(void);
-static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
 void encoder_read (int32_t *mot_encoder, uint64_t *ENC_TimeStamp);
 /* USER CODE END PFP */
@@ -168,13 +166,10 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM4_Init();
   MX_TIM1_Init();
-  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start_IT(&htim1, TIM_CHANNEL_ALL);
   HAL_TIM_Encoder_Start_IT(&htim3, TIM_CHANNEL_ALL);
   HAL_TIM_Encoder_Start_IT(&htim4, TIM_CHANNEL_ALL);
-  TIM5->CCR1 = 1200;    // The duty cycle has been set to 30%
-  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
 
   timeManagerInit(&htim2);
   NTP_UDP = udp_new();
@@ -186,6 +181,7 @@ int main(void)
   uint32_t UDP_Interval = 1000000;         // Send UDP packets every 1ms
   uint32_t UDP_counter = 0;
   uint8_t IRTracker_period = 40;           // The camera fps is set to 1/40ms = 25
+  uint32_t IRTracker_pulseWidth = 500000;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -196,12 +192,16 @@ int main(void)
 	  {
 		  if (UDP_counter % IRTracker_period == 0)
 		  {
-			  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
+			  HAL_GPIO_WritePin(IRTrigger_GPIO_Port, IRTrigger_Pin, GPIO_PIN_SET);
 			  outPacket.Data.IR_TimeStamp = Tick();
 		  }
 		  encoder_read(outPacket.Data.mot_encoders, &outPacket.Data.ENC_TimeStamp);
 		  sendUdpPacket();
 		  UDP_counter++;
+	  }
+	  if (Tick() - outPacket.Data.IR_TimeStamp >= IRTracker_pulseWidth)
+	  {
+		  HAL_GPIO_WritePin(IRTrigger_GPIO_Port, IRTrigger_Pin, GPIO_PIN_RESET);
 	  }
 	  MX_LWIP_Process();
     /* USER CODE END WHILE */
@@ -462,69 +462,6 @@ static void MX_TIM4_Init(void)
 }
 
 /**
-  * @brief TIM5 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM5_Init(void)
-{
-
-  /* USER CODE BEGIN TIM5_Init 0 */
-
-  /* USER CODE END TIM5_Init 0 */
-
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-
-  /* USER CODE BEGIN TIM5_Init 1 */
-
-  /* USER CODE END TIM5_Init 1 */
-  htim5.Instance = TIM5;
-  htim5.Init.Prescaler = 1999;
-  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim5.Init.Period = 3999;
-  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_Init(&htim5) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_OnePulse_Init(&htim5, TIM_OPMODE_SINGLE) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM5_Init 2 */
-
-  /* USER CODE END TIM5_Init 2 */
-  HAL_TIM_MspPostInit(&htim5);
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -545,6 +482,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOG_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(IRTrigger_GPIO_Port, IRTrigger_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
@@ -555,6 +495,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USER_Btn_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : IRTrigger_Pin */
+  GPIO_InitStruct.Pin = IRTrigger_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(IRTrigger_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LD3_Pin LD2_Pin */
   GPIO_InitStruct.Pin = LD3_Pin|LD2_Pin;
