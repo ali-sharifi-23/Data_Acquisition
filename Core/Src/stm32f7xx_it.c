@@ -237,6 +237,12 @@ void EXTI15_10_IRQHandler(void)
         	TIM1->CNT = 0;
         	TIM4->CNT = 0;
         	TIM8->CNT = 0;
+        	previous_cnt1 = 0;
+			previous_cnt2 = 0;
+			previous_cnt3 = 0;
+			outPacket.Data.mot_encoders[0] = 0;
+			outPacket.Data.mot_encoders[1] = 0;
+			outPacket.Data.mot_encoders[2] = 0;
 
             last_interrupt_time = current_time;
         }

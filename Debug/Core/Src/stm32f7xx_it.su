@@ -9,4 +9,4 @@
 ../Core/Src/stm32f7xx_it.c:192:6:SysTick_Handler	8	static
 ../Core/Src/stm32f7xx_it.c:213:6:TIM2_IRQHandler	8	static
 ../Core/Src/stm32f7xx_it.c:227:6:EXTI15_10_IRQHandler	16	static
-../Core/Src/stm32f7xx_it.c:253:6:encoder_read	32	static
+../Core/Src/stm32f7xx_it.c:259:6:encoder_read	32	static

@@ -71,16 +71,7 @@ union NtpClientResponsePacket{
 	uint8_t buffer[24];
 };
 
-struct UdpDataType
-{
-	int32_t mot_encoders[3];
-	uint64_t ENC_TimeStamp;
-	uint64_t IR_TimeStamp;
-};
-union UDP_packet{
-	struct UdpDataType Data;
-	uint8_t buff[sizeof(struct UdpDataType)];
-}outPacket;
+union UDP_packet outPacket;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -184,8 +175,8 @@ int main(void)
   UDP = udp_new();
   uint32_t UDP_Interval = 1000000;         // Send UDP packets every 1ms
   uint32_t UDP_counter = 0;
-  uint8_t IRTracker_period = 10;           // The camera fps is set to 1/40ms = 25
-  uint32_t IRTracker_pulseWidth = 500000;
+  uint8_t IRTracker_period = 20;           // The camera fps is set to 1/20ms = 50
+  uint32_t IRTracker_pulseWidth = 700000;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -485,16 +476,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(IRTrigger_GPIO_Port, IRTrigger_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, IRTrigger_Pin|LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOG, GPIO_PIN_6, GPIO_PIN_RESET);

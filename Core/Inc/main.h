@@ -31,12 +31,23 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdint.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
+struct UdpDataType {
+	int32_t mot_encoders[3];
+	uint64_t ENC_TimeStamp;
+	uint64_t IR_TimeStamp;
+};
 
+union UDP_packet {
+	struct UdpDataType Data;
+	uint8_t buff[sizeof(struct UdpDataType)];
+};
+
+extern union UDP_packet outPacket;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -64,8 +75,6 @@ void Error_Handler(void);
 #define MCO_GPIO_Port GPIOH
 #define RMII_MDC_Pin GPIO_PIN_1
 #define RMII_MDC_GPIO_Port GPIOC
-#define IRTrigger_Pin GPIO_PIN_0
-#define IRTrigger_GPIO_Port GPIOA
 #define RMII_REF_CLK_Pin GPIO_PIN_1
 #define RMII_REF_CLK_GPIO_Port GPIOA
 #define RMII_MDIO_Pin GPIO_PIN_2
@@ -76,6 +85,8 @@ void Error_Handler(void);
 #define RMII_RXD0_GPIO_Port GPIOC
 #define RMII_RXD1_Pin GPIO_PIN_5
 #define RMII_RXD1_GPIO_Port GPIOC
+#define IRTrigger_Pin GPIO_PIN_0
+#define IRTrigger_GPIO_Port GPIOB
 #define RMII_TXD1_Pin GPIO_PIN_13
 #define RMII_TXD1_GPIO_Port GPIOB
 #define LD3_Pin GPIO_PIN_14
